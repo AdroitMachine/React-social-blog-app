@@ -1,7 +1,8 @@
-import React, { useState, useReducer, useEffect } from "react";
+import React, { useState, useReducer, useEffect, Suspense } from "react";
 import ReactDOM from "react-dom";
 import { useImmerReducer } from "use-immer";
 import { BrowserRouter, Switch, Route } from "react-router-dom";
+import { CSSTransition } from "react-transition-group";
 import Axios from "axios";
 
 import StateContext from "./StateContext";
@@ -15,11 +16,20 @@ import Footer from "./components/Footer";
 import About from "./components/About";
 import Terms from "./components/Terms";
 import Home from "./components/Home";
-import CreatePost from "./components/CreatePost";
-import ViewSinglePost from "./components/ViewSinglePost";
+const CreatePost = React.lazy(()=> import("./components/CreatePost"))
+const ViewSinglePost = React.lazy(()=> import("./components/ViewSinglePost"))
+
 import FlashMessages from "./components/FlashMessages";
 import ExampleContext from "./ExampleContext";
 import Profile from "./components/Profile";
+import EditPost from "./components/EditPost";
+import NotFound from "./components/NotFound";
+const Search = React.lazy(()=> import("./components/Search"))
+const Chat = React.lazy(()=> import("./components/Chat"))
+
+
+import LoadingDotsIcon from "./components/LoadingDotsIcon";
+
 function Main() {
   const initialState = {
     loggedIn: Boolean(localStorage.getItem("complexappToken")),
@@ -29,6 +39,9 @@ function Main() {
       username: localStorage.getItem("complexappUsername"),
       avatar: localStorage.getItem("complexappAvatar"),
     },
+    isSearchOpen: false,
+    isChatOpen: false,
+    unreadChatCount: 0,
   };
   function ourReducer(draft, action) {
     switch (action.type) {
@@ -41,6 +54,24 @@ function Main() {
         return;
       case "flashMessage":
         draft.flashMessages.push(action.value);
+        return;
+      case "openSearch":
+        draft.isSearchOpen = true;
+        return;
+      case "closeSearch":
+        draft.isSearchOpen = false;
+        return;
+      case "toggleChat":
+        draft.isChatOpen = !draft.isChatOpen;
+        return;
+      case "closedChat":
+        draft.isChatOpen = false;
+        return;
+      case "incrementUnreadChatCount":
+        draft.unreadChatCount++;
+        return;
+      case "clearUnreadChatCount":
+        draft.unreadChatCount = 0;
         return;
     }
   }
@@ -58,21 +89,49 @@ function Main() {
     }
   }, [state.loggedIn]);
 
+  //Check if token has expired or not on the first render
+  useEffect(() => {
+    if (state.loggedIn) {
+      const ourRequest = Axios.CancelToken.source();
+      async function fetchResults() {
+        try {
+          const response = await Axios.post(
+            "/checkToken",
+            { token: state.user.token },
+            { cancelToken: ourRequest.token }
+          );
+          if(!response.data){
+            dispatch({type: "logout"})
+            dispatch({type: 'flashMessage', value: 'your session has expired. please log in again!'})
+          }
+        } catch (e) {
+          console.log("there was a problem or the request was canceled.");
+        }
+      }
+      fetchResults();
+      return () => ourRequest.cancel();
+    }
+  }, []);
+
   return (
     <StateContext.Provider value={state}>
       <DispatchContext.Provider value={dispatch}>
         <BrowserRouter>
           <FlashMessages messages={state.flashMessages} />
           <Header />
+          <Suspense fallback={<LoadingDotsIcon/>}>
           <Switch>
             <Route path="/profile/:username">
-              <Profile/>
+              <Profile />
             </Route>
             <Route path="/" exact>
               {state.loggedIn ? <Home /> : <HomeGuest />}
             </Route>
-            <Route path="/post/:id">
+            <Route path="/post/:id" exact>
               <ViewSinglePost />
+            </Route>
+            <Route path="/post/:id/edit" exact>
+              <EditPost />
             </Route>
             <Route path="/create-post">
               <CreatePost />
@@ -83,7 +142,24 @@ function Main() {
             <Route path="/terms">
               <Terms />
             </Route>
+            <Route>
+              <NotFound />
+            </Route>
           </Switch>
+          </Suspense>
+          <CSSTransition
+            timeout={330}
+            in={state.isSearchOpen}
+            classNames="search-overlay"
+            unmountOnExit
+          >
+            <div className="search-overlay">
+              <Suspense fallback="">
+                <Search/>
+              </Suspense>
+            </div>
+          </CSSTransition>
+          <Suspense fallback="">{state.loggedIn && <Chat/>}</Suspense>
           <Footer />
         </BrowserRouter>
       </DispatchContext.Provider>

@@ -16,8 +16,11 @@ const HeaderLoggedOut = (props) => {
         // localStorage.setItem("complexappUsername", response.data.username);
         // localStorage.setItem("complexappAvatar", response.data.avatar);
         appDispatch({type: 'login', data: response.data})
+        appDispatch({type: 'flashMessage', value: 'You have successfully lgged in.'})
       } else {
         console.log("incorrect username/password");
+        appDispatch({type: 'flashMessage', value: 'Invalid usernmae/password.'})
+
       }
     } catch (error) {
       console.log(error.response.data);
